@@ -3075,6 +3075,13 @@ mod tests {
         let block_number = database_block.number;
         let block_hash = database_block.header.hash();
 
+        assert!(
+            !provider.receipts_by_block_id(block_number.into())?.unwrap_or_default().is_empty()
+        );
+        assert!(
+            !receipts.get(block_number as usize).unwrap().clone().is_empty()
+        );
+
         assert_eq!(
             provider.receipts_by_block_id(block_number.into())?.unwrap_or_default(),
             receipts.get(block_number as usize).unwrap().clone()
@@ -3116,6 +3123,14 @@ mod tests {
         let canonical_block = in_memory_blocks.get(in_memory_block_count - 1).unwrap().clone();
         let safe_block = in_memory_blocks.get(in_memory_block_count - 2).unwrap().clone();
         let finalized_block = in_memory_blocks.get(in_memory_block_count - 3).unwrap().clone();
+
+
+        assert!(
+            !provider.receipts_by_number_or_tag(database_block.number.into())?.unwrap_or_default().is_empty()
+        );
+        assert!(
+            !receipts.get(database_block.number as usize).unwrap().clone().is_empty()
+        );
 
         assert_eq!(
             provider.receipts_by_number_or_tag(database_block.number.into())?.unwrap_or_default(),
