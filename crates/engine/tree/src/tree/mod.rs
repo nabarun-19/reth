@@ -39,7 +39,7 @@ use reth_rpc_types::{
     ExecutionPayload,
 };
 use reth_stages_api::ControlFlow;
-use reth_trie::HashedPostState;
+use reth_trie::{updates::TrieUpdates, HashedPostState};
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
     ops::Bound,
@@ -81,6 +81,10 @@ pub struct TreeState {
     blocks_by_number: BTreeMap<BlockNumber, Vec<ExecutedBlock>>,
     /// Map of any parent block hash to its children.
     parent_to_child: HashMap<B256, HashSet<B256>>,
+    /// Map of hash to trie updates for canonical blocks that are persisted but not finalized.
+    ///
+    /// Contains the block number for easy removal.
+    persisted_trie_updates: HashMap<B256, (BlockNumber, Arc<TrieUpdates>)>,
     /// Currently tracked canonical head of the chain.
     current_canonical_head: BlockNumHash,
 }
@@ -93,6 +97,7 @@ impl TreeState {
             blocks_by_number: BTreeMap::new(),
             current_canonical_head,
             parent_to_child: HashMap::new(),
+            persisted_trie_updates: HashMap::new(),
         }
     }
 
@@ -198,7 +203,6 @@ impl TreeState {
         // * fetch the number of the finalized hash, removing any sidechains that are __below__ the
         // finalized block
 
-        // TODO: move trie updates here
         // First, let's walk back the canonical chain and remove canonical blocks lower than the
         // upper bound
         let mut current_block = self.current_canonical_head.hash;
@@ -235,6 +239,10 @@ impl TreeState {
                     }
                 }
 
+                // finally, move the trie updates
+                self.persisted_trie_updates
+                    .insert(block.block.hash(), (block.block.number, block.trie));
+
                 current_block = block.block.parent_hash;
             } else {
                 current_block = block_entry.get().block.parent_hash;
@@ -259,7 +267,9 @@ impl TreeState {
                 numbers_to_remove.push(number);
             }
 
-            // TODO: remove trie updates whose root are below the finalized block
+            // remove trie updates that are below the finalized block
+            self.persisted_trie_updates.retain(|_, (block_num, _)| *block_num <= num);
+
             // Now that we have the numbers, let's remove **all** blocks before the finalized block
             for number in numbers_to_remove {
                 if let Some(blocks) = self.blocks_by_number.remove(&number) {
@@ -2331,6 +2341,7 @@ mod tests {
                 blocks_by_number,
                 current_canonical_head: blocks.last().unwrap().block().num_hash(),
                 parent_to_child,
+                persisted_trie_updates: HashMap::default(),
             };
 
             let last_executed_block = blocks.last().unwrap().clone();
